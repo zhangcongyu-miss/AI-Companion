@@ -5,8 +5,13 @@ const router = Router();
 
 const VALID_VOICES = ['Kore', 'Zephyr', 'Puck', 'Charon', 'Fenrir', 'Aoede'];
 
-// POST /api/speech — 文字转语音
+// POST /api/speech — 文字转语音（Gemini TTS，需配置 GEMINI_API_KEY）
 router.post('/', async (req: Request, res: Response) => {
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(503).json({ error: '语音服务未配置（GEMINI_API_KEY 缺失）' });
+    return;
+  }
+
   const { text, voiceName = 'Kore' } = req.body as { text: string; voiceName?: string };
 
   if (!text?.trim()) {
@@ -17,7 +22,7 @@ router.post('/', async (req: Request, res: Response) => {
   const voice = VALID_VOICES.includes(voiceName) ? voiceName : 'Kore';
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts',
       contents: [{ parts: [{ text: text.trim() }] }],

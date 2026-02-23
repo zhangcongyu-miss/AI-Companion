@@ -1,8 +1,21 @@
 import { Router, Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import db from '../db.js';
 
 const router = Router();
+
+// 豆包 OpenAI 兼容客户端（Ark 平台）
+function getDoubaoClient() {
+  const apiKey = process.env.DOUBAO_API_KEY;
+  if (!apiKey) throw new Error('未配置 DOUBAO_API_KEY');
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+  });
+}
+
+// 豆包模型 ID，默认 doubao-pro-32k，可通过环境变量覆盖
+const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
 
 interface MessageRow {
   id: string;
@@ -46,7 +59,10 @@ router.post('/:characterId', async (req: Request, res: Response) => {
     return;
   }
 
-  const character = db.prepare('SELECT id, name, personality, intro FROM characters WHERE id = ?').get(characterId) as CharacterRow | undefined;
+  const character = db.prepare(
+    'SELECT id, name, personality, intro FROM characters WHERE id = ?'
+  ).get(characterId) as CharacterRow | undefined;
+
   if (!character) {
     res.status(404).json({ error: '角色不存在' });
     return;
@@ -59,28 +75,35 @@ router.post('/:characterId', async (req: Request, res: Response) => {
     'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 1, ?)'
   ).run(userMsgId, characterId, text.trim(), now);
 
-  // 加载最近50条历史消息用于构建对话上下文
+  // 加载最近 50 条历史消息构建上下文（排除刚插入的用户消息）
   const historyRows = db.prepare(
     'SELECT text, is_user FROM messages WHERE character_id = ? ORDER BY timestamp ASC LIMIT 50'
   ).all(characterId) as Pick<MessageRow, 'text' | 'is_user'>[];
 
-  // 排除刚刚插入的用户消息（最后一条），构建 AI 历史
-  const history = historyRows.slice(0, -1).map(m => ({
-    role: m.is_user === 1 ? 'user' as const : 'model' as const,
-    parts: [{ text: m.text }],
-  }));
+  const history: OpenAI.Chat.ChatCompletionMessageParam[] = historyRows
+    .slice(0, -1)
+    .map(m => ({
+      role: m.is_user === 1 ? 'user' : 'assistant',
+      content: m.text,
+    }));
 
-  const systemInstruction = `你是${character.name}，一个具有${character.personality}性格的虚拟伴侣。你的目标是提供情感陪伴和价值。${character.intro}请用中文回复，保持角色一致性，回复简洁自然。`;
+  const systemPrompt = `你是${character.name}，一个具有${character.personality}性格的虚拟伴侣。${character.intro}
+请用中文回复，保持角色一致性，语气亲切自然，回复控制在100字以内。`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
-      config: { systemInstruction },
+    const client = getDoubaoClient();
+    const completion = await client.chat.completions.create({
+      model: DOUBAO_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: text.trim() },
+      ],
+      max_tokens: 300,
+      temperature: 0.9,
     });
 
-    const aiText = response.text?.trim() || '我在这里听着呢。';
+    const aiText = completion.choices[0]?.message?.content?.trim() || '我在这里听着呢。';
     const aiMsgId = (Date.now() + 1).toString();
 
     db.prepare(
@@ -89,10 +112,11 @@ router.post('/:characterId', async (req: Request, res: Response) => {
 
     res.json({ id: aiMsgId, text: aiText, isUser: false, timestamp: Date.now() });
   } catch (error) {
-    console.error('AI 响应错误:', error);
-    // 删除已保存的用户消息，保持一致性
+    console.error('豆包 AI 响应错误:', error);
+    // 删除已保存的用户消息，保持数据一致性
     db.prepare('DELETE FROM messages WHERE id = ?').run(userMsgId);
-    res.status(500).json({ error: 'AI 响应失败，请稍后重试' });
+    const msg = error instanceof Error ? error.message : '未知错误';
+    res.status(500).json({ error: `AI 响应失败：${msg}` });
   }
 });
 

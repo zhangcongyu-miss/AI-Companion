@@ -44,7 +44,10 @@ if (fs.existsSync(distPath)) {
 
 app.listen(PORT, () => {
   console.log(`✅ 后端服务启动: http://localhost:${PORT}`);
+  if (!process.env.DOUBAO_API_KEY) {
+    console.warn('⚠️  未设置 DOUBAO_API_KEY，AI 对话功能将无法使用');
+  }
   if (!process.env.GEMINI_API_KEY) {
-    console.warn('⚠️  未设置 GEMINI_API_KEY，AI 功能将无法使用');
+    console.warn('⚠️  未设置 GEMINI_API_KEY，语音朗读功能已禁用（可选）');
   }
 });
