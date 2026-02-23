@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,6 +11,18 @@ import speechRouter from './routes/speech.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
+
+// 允许 Capacitor APP 跨域请求
+app.use(cors({
+  origin: [
+    'http://localhost',
+    'http://localhost:3000',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'https://ai-companion-production-43d9.up.railway.app',
+  ],
+  credentials: true,
+}));
 
 // 支持大体积 base64 头像
 app.use(express.json({ limit: '10mb' }));

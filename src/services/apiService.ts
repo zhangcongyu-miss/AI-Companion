@@ -1,6 +1,7 @@
 import { Character, Message } from '../types';
 
-const BASE = '/api';
+// 网页版用相对路径，APP 版用 Railway 完整地址（通过 VITE_API_URL 环境变量注入）
+const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + url, options);

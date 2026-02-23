@@ -1,13 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>AI心语伙伴</title>
+
+    <!-- PWA / iOS Safari 安装支持 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="心语伙伴" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- 主题色 -->
+    <meta name="theme-color" content="#7c3aed" />
+    <meta name="msapplication-TileColor" content="#7c3aed" />
+
+    <!-- Apple Touch Icon（Safari 添加到主屏幕时使用） -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.ico.png" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
