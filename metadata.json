@@ -1,0 +1,7 @@
+{
+  "name": "AI Companion",
+  "description": "An AI virtual companion app providing emotional value and companionship through personalized characters.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
