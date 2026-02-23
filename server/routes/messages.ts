@@ -4,18 +4,11 @@ import db from '../db.js';
 
 const router = Router();
 
-// 豆包 OpenAI 兼容客户端（Ark 平台）
-function getDoubaoClient() {
-  const apiKey = process.env.DOUBAO_API_KEY;
-  if (!apiKey) throw new Error('未配置 DOUBAO_API_KEY');
-  return new OpenAI({
-    apiKey,
-    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-  });
-}
-
-// 豆包模型 ID，默认 doubao-pro-32k，可通过环境变量覆盖
-const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
+// Pollinations.ai — 完全免费，无需 API Key
+const client = new OpenAI({
+  baseURL: 'https://text.pollinations.ai/openai',
+  apiKey: 'free', // 占位符，Pollinations 不验证
+});
 
 interface MessageRow {
   id: string;
@@ -75,9 +68,9 @@ router.post('/:characterId', async (req: Request, res: Response) => {
     'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 1, ?)'
   ).run(userMsgId, characterId, text.trim(), now);
 
-  // 加载最近 50 条历史消息构建上下文（排除刚插入的用户消息）
+  // 加载最近 20 条历史构建上下文（排除刚插入的用户消息）
   const historyRows = db.prepare(
-    'SELECT text, is_user FROM messages WHERE character_id = ? ORDER BY timestamp ASC LIMIT 50'
+    'SELECT text, is_user FROM messages WHERE character_id = ? ORDER BY timestamp ASC LIMIT 20'
   ).all(characterId) as Pick<MessageRow, 'text' | 'is_user'>[];
 
   const history: OpenAI.Chat.ChatCompletionMessageParam[] = historyRows
@@ -87,23 +80,22 @@ router.post('/:characterId', async (req: Request, res: Response) => {
       content: m.text,
     }));
 
-  const systemPrompt = `你是${character.name}，一个具有${character.personality}性格的虚拟伴侣。${character.intro}
-请用中文回复，保持角色一致性，语气亲切自然，回复控制在100字以内。`;
+  const systemPrompt = `你是${character.name}，一个${character.personality}性格的虚拟伴侣。${character.intro}
+请用中文回复，保持角色特色，语气自然亲切，回复在80字以内。`;
 
   try {
-    const client = getDoubaoClient();
     const completion = await client.chat.completions.create({
-      model: DOUBAO_MODEL,
+      model: 'openai-large',
       messages: [
         { role: 'system', content: systemPrompt },
         ...history,
         { role: 'user', content: text.trim() },
       ],
-      max_tokens: 300,
-      temperature: 0.9,
+      max_tokens: 256,
+      temperature: 0.85,
     });
 
-    const aiText = completion.choices[0]?.message?.content?.trim() || '我在这里听着呢。';
+    const aiText = completion.choices[0]?.message?.content?.trim() || '我在这里听着呢～';
     const aiMsgId = (Date.now() + 1).toString();
 
     db.prepare(
@@ -112,8 +104,7 @@ router.post('/:characterId', async (req: Request, res: Response) => {
 
     res.json({ id: aiMsgId, text: aiText, isUser: false, timestamp: Date.now() });
   } catch (error) {
-    console.error('豆包 AI 响应错误:', error);
-    // 删除已保存的用户消息，保持数据一致性
+    console.error('AI 响应错误:', error);
     db.prepare('DELETE FROM messages WHERE id = ?').run(userMsgId);
     const msg = error instanceof Error ? error.message : '未知错误';
     res.status(500).json({ error: `AI 响应失败：${msg}` });
