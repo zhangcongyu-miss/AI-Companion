@@ -4,12 +4,6 @@ import db from '../db.js';
 
 const router = Router();
 
-// Pollinations.ai — 完全免费，无需 API Key
-const client = new OpenAI({
-  baseURL: 'https://text.pollinations.ai/openai',
-  apiKey: 'free', // 占位符，Pollinations 不验证
-});
-
 interface MessageRow {
   id: string;
   character_id: string;
@@ -32,6 +26,15 @@ function rowToMessage(row: MessageRow) {
     isUser: row.is_user === 1,
     timestamp: row.timestamp,
   };
+}
+
+function getGroqClient() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('未配置 GROQ_API_KEY，请在 Railway Variables 中添加');
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://api.groq.com/openai/v1',
+  });
 }
 
 // GET /api/messages/:characterId — 获取角色聊天记录
@@ -63,12 +66,11 @@ router.post('/:characterId', async (req: Request, res: Response) => {
 
   // 保存用户消息
   const userMsgId = Date.now().toString();
-  const now = Date.now();
   db.prepare(
     'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 1, ?)'
-  ).run(userMsgId, characterId, text.trim(), now);
+  ).run(userMsgId, characterId, text.trim(), Date.now());
 
-  // 加载最近 20 条历史构建上下文（排除刚插入的用户消息）
+  // 取最近 20 条历史（排除刚插入的用户消息）
   const historyRows = db.prepare(
     'SELECT text, is_user FROM messages WHERE character_id = ? ORDER BY timestamp ASC LIMIT 20'
   ).all(characterId) as Pick<MessageRow, 'text' | 'is_user'>[];
@@ -84,14 +86,15 @@ router.post('/:characterId', async (req: Request, res: Response) => {
 请用中文回复，保持角色特色，语气自然亲切，回复在80字以内。`;
 
   try {
+    const client = getGroqClient();
     const completion = await client.chat.completions.create({
-      model: 'openai-large',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemPrompt },
         ...history,
         { role: 'user', content: text.trim() },
       ],
-      max_tokens: 256,
+      max_tokens: 300,
       temperature: 0.85,
     });
 
@@ -102,12 +105,13 @@ router.post('/:characterId', async (req: Request, res: Response) => {
       'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 0, ?)'
     ).run(aiMsgId, characterId, aiText, Date.now());
 
+    console.log(`[AI] ${character.name} → "${aiText.slice(0, 40)}..."`);
     res.json({ id: aiMsgId, text: aiText, isUser: false, timestamp: Date.now() });
   } catch (error) {
-    console.error('AI 响应错误:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('[AI] 响应失败:', errMsg);
     db.prepare('DELETE FROM messages WHERE id = ?').run(userMsgId);
-    const msg = error instanceof Error ? error.message : '未知错误';
-    res.status(500).json({ error: `AI 响应失败：${msg}` });
+    res.status(500).json({ error: `AI 响应失败：${errMsg}` });
   }
 });
 
