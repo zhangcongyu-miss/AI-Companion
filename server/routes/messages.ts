@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import db from '../db.js';
 
 const router = Router();
@@ -26,15 +26,6 @@ function rowToMessage(row: MessageRow) {
     isUser: row.is_user === 1,
     timestamp: row.timestamp,
   };
-}
-
-function getGroqClient() {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('未配置 GROQ_API_KEY，请在 Railway Variables 中添加');
-  return new OpenAI({
-    apiKey,
-    baseURL: 'https://api.groq.com/openai/v1',
-  });
 }
 
 // GET /api/messages/:characterId — 获取角色聊天记录
@@ -64,52 +55,54 @@ router.post('/:characterId', async (req: Request, res: Response) => {
     return;
   }
 
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: '未配置 GEMINI_API_KEY，请在 Railway Variables 中添加' });
+    return;
+  }
+
   // 保存用户消息
   const userMsgId = Date.now().toString();
   db.prepare(
     'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 1, ?)'
   ).run(userMsgId, characterId, text.trim(), Date.now());
 
-  // 取最近 20 条历史（排除刚插入的用户消息）
+  // 取最近 20 条历史构建上下文（排除刚插入的用户消息）
   const historyRows = db.prepare(
     'SELECT text, is_user FROM messages WHERE character_id = ? ORDER BY timestamp ASC LIMIT 20'
   ).all(characterId) as Pick<MessageRow, 'text' | 'is_user'>[];
 
-  const history: OpenAI.Chat.ChatCompletionMessageParam[] = historyRows
-    .slice(0, -1)
-    .map(m => ({
-      role: m.is_user === 1 ? 'user' : 'assistant',
-      content: m.text,
-    }));
+  const history = historyRows.slice(0, -1).map(m => ({
+    role: m.is_user === 1 ? 'user' as const : 'model' as const,
+    parts: [{ text: m.text }],
+  }));
 
-  const systemPrompt = `你是${character.name}，一个${character.personality}性格的虚拟伴侣。${character.intro}
+  const systemInstruction = `你是${character.name}，一个${character.personality}性格的虚拟伴侣。${character.intro}
 请用中文回复，保持角色特色，语气自然亲切，回复在80字以内。`;
 
   try {
-    const client = getGroqClient();
-    const completion = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [
         ...history,
-        { role: 'user', content: text.trim() },
+        { role: 'user', parts: [{ text: text.trim() }] },
       ],
-      max_tokens: 300,
-      temperature: 0.85,
+      config: { systemInstruction },
     });
 
-    const aiText = completion.choices[0]?.message?.content?.trim() || '我在这里听着呢～';
+    const aiText = response.text?.trim() || '我在这里听着呢～';
     const aiMsgId = (Date.now() + 1).toString();
 
     db.prepare(
       'INSERT INTO messages (id, character_id, text, is_user, timestamp) VALUES (?, ?, ?, 0, ?)'
     ).run(aiMsgId, characterId, aiText, Date.now());
 
-    console.log(`[AI] ${character.name} → "${aiText.slice(0, 40)}..."`);
+    console.log(`[AI] ${character.name} → "${aiText.slice(0, 40)}"`);
     res.json({ id: aiMsgId, text: aiText, isUser: false, timestamp: Date.now() });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('[AI] 响应失败:', errMsg);
+    console.error('[AI] Gemini 响应失败:', errMsg);
     db.prepare('DELETE FROM messages WHERE id = ?').run(userMsgId);
     res.status(500).json({ error: `AI 响应失败：${errMsg}` });
   }
