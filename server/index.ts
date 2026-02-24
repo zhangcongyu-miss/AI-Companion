@@ -44,9 +44,12 @@ if (fs.existsSync(distPath)) {
 
 app.listen(PORT, () => {
   console.log(`✅ 后端服务启动: http://localhost:${PORT}`);
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn('⚠️  未配置 GEMINI_API_KEY，AI 对话和语音功能将无法使用！请在 Railway Variables 中添加');
+  if (!process.env.ZHIPU_API_KEY) {
+    console.warn('⚠️  未配置 ZHIPU_API_KEY，AI 对话功能将无法使用！请在 Railway Variables 中添加');
   } else {
-    console.log('🤖 AI 对话 + 语音：Google Gemini（免费额度 1500次/天）');
+    console.log('🤖 AI 对话：智谱 GLM-4-Flash（免费）');
+  }
+  if (!process.env.GEMINI_API_KEY) {
+    console.log('🔇 语音朗读：未配置 GEMINI_API_KEY，语音功能已禁用（可选）');
   }
 });
