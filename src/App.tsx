@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronLeft,
+  ChevronRight,
   Settings,
   Share2,
   Trash2,
@@ -167,10 +168,14 @@ export default function App() {
 
   const handleChatFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && selectedCharacter) {
+    if (!file || !selectedCharacter) return;
+    if (!file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
       const userMsg: Message = {
         id: Date.now().toString(),
-        text: `[文件] ${file.name}`,
+        text: reader.result as string, // data:image/... base64
         isUser: true,
         timestamp: Date.now(),
       };
@@ -178,7 +183,9 @@ export default function App() {
         ...prev,
         [selectedCharacter.id]: [...(prev[selectedCharacter.id] || []), userMsg],
       }));
-    }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // 允许重复选同一张图
   };
 
   const toggleVoiceInput = () => {
@@ -319,15 +326,21 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4"
           >
+            {/* 左侧可点击区域：头像 + 名称 → 跳转角色介绍 */}
             <div
-              className="w-[50px] h-[50px] rounded-full overflow-hidden border-2 border-orange-100 flex-shrink-0 cursor-pointer"
+              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer active:opacity-70 transition-opacity"
               onClick={() => { setSelectedCharacter(char); setCurrentScreen('detail'); }}
             >
-              <img src={char.avatar} alt={char.name} className="w-full h-full object-cover" />
-            </div>
-            <div className="flex-1 min-w-0" onClick={() => { setSelectedCharacter(char); setCurrentScreen('detail'); }}>
-              <h3 className="text-[16px] font-bold truncate">{char.name}</h3>
-              <p className="text-[14px] text-slate-500 truncate">{char.description}</p>
+              <div className="w-[50px] h-[50px] rounded-full overflow-hidden border-2 border-orange-100 flex-shrink-0">
+                <img src={char.avatar} alt={char.name} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1">
+                  <h3 className="text-[16px] font-bold truncate">{char.name}</h3>
+                  <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                </div>
+                <p className="text-[13px] text-slate-400 truncate">点击查看角色介绍</p>
+              </div>
             </div>
             <button
               onClick={() => handleStartChat(char)}
@@ -497,8 +510,10 @@ export default function App() {
                 </div>
               )}
               <div className={`flex flex-col ${msg.isUser ? 'items-end' : ''} gap-1`}>
-                <div className={`${msg.isUser ? 'bg-chat-user rounded-tl-[18px]' : 'bg-primary-light rounded-tr-[18px]'} p-3 rounded-br-[18px] rounded-bl-[18px] text-sm leading-relaxed text-gray-800`}>
-                  {msg.text}
+                <div className={`${msg.isUser ? 'bg-chat-user rounded-tl-[18px]' : 'bg-primary-light rounded-tr-[18px]'} ${msg.text.startsWith('data:image/') ? 'p-1' : 'p-3'} rounded-br-[18px] rounded-bl-[18px] text-sm leading-relaxed text-gray-800`}>
+                  {msg.text.startsWith('data:image/')
+                    ? <img src={msg.text} alt="图片" className="max-w-[200px] max-h-[260px] rounded-[14px] object-cover block" />
+                    : msg.text}
                 </div>
                 {!msg.isUser && (
                   <button
@@ -554,6 +569,7 @@ export default function App() {
             type="file"
             ref={chatFileInputRef}
             onChange={handleChatFileUpload}
+            accept="image/*"
             className="hidden"
           />
           <button
