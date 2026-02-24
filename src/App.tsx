@@ -57,6 +57,8 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPlayingVoice, setIsPlayingVoice] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  // 记录进入聊天/创建页面前的来源页，用于返回
+  const [chatOriginScreen, setChatOriginScreen] = useState<Screen>('home');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +81,7 @@ export default function App() {
 
   const handleStartChat = (char: Character) => {
     setSelectedCharacter(char);
+    setChatOriginScreen(currentScreen); // 记录来源页面，用于返回
     setCurrentScreen('chat');
     if (!chatMessages[char.id]) {
       fetchMessages(char.id)
@@ -274,13 +277,14 @@ export default function App() {
       setCharacters(prev => [newChar, ...prev]);
     }
 
+    const returnScreen = isEditing ? 'detail' : 'home';
     setNewName('');
     setNewDescription('');
     setNewAvatar(null);
     setNewPersonality('温暖型');
     setIsEditing(false);
-    setCurrentScreen('home');
-    setActiveTab('home');
+    setCurrentScreen(returnScreen);
+    if (returnScreen === 'home') setActiveTab('home');
   };
 
   const handleDeleteCharacter = async () => {
@@ -445,7 +449,7 @@ export default function App() {
       <div className="flex flex-col h-full bg-white relative">
         <header className="fixed top-0 left-0 right-0 z-50 blur-bg border-b border-gray-100 px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentScreen('home')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+            <button onClick={() => setCurrentScreen(chatOriginScreen)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <ChevronLeft className="w-6 h-6" />
             </button>
             <div
@@ -629,7 +633,7 @@ export default function App() {
   const renderCreateScreen = () => (
     <div className="flex flex-col h-full bg-[#f9f7f2]">
       <header className="sticky top-0 z-50 bg-[#f9f7f2]/80 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-100">
-        <button onClick={() => setCurrentScreen('home')} className="text-gray-500 text-base font-medium">取消</button>
+        <button onClick={() => setCurrentScreen(isEditing ? 'detail' : 'home')} className="text-gray-500 text-base font-medium">取消</button>
         <h1 className="text-lg font-bold text-gray-900">{isEditing ? '编辑角色' : '创建新角色'}</h1>
         <button onClick={handleSaveCharacter} className="text-brand font-bold text-base">保存</button>
       </header>

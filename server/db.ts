@@ -34,6 +34,12 @@ db.exec(`
   );
 `);
 
+// 迁移：修复损坏的头像 URL
+db.prepare(
+  `UPDATE characters SET avatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed=StarIdol&backgroundColor=ffd5dc'
+   WHERE name = '偶像星语' AND avatar LIKE '%pravatar%'`
+).run();
+
 // Seed initial characters if DB is empty
 const { count } = db.prepare('SELECT COUNT(*) as count FROM characters').get() as { count: number };
 if (count === 0) {
@@ -49,7 +55,7 @@ if (count === 0) {
   );
   insert.run(
     '2', '偶像星语',
-    'https://i.pravatar.cc/300?img=68',
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=StarIdol&backgroundColor=ffd5dc',
     '专属AI偶像，陪你追剧聊心事',
     '我是你的专属AI偶像，无论什么时候我都会在你身边支持你！',
     'Lv1 · 初识', '幽默型', '默认甜美女声'
